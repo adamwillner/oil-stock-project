@@ -1,0 +1,1501 @@
+{
+  "datasets": [
+    {
+      "name": "57d8e900",
+      "displayName": "cards_5m",
+      "queryLines": [
+        "SELECT\r\n",
+        "    CAST(trading_date_oslo AS DATE) AS trading_date_oslo,\r\n",
+        "\r\n",
+        "    MAX_BY(eqnr_price, timestamp_utc) AS eqnr_price,\r\n",
+        "    MAX_BY(brent_price, timestamp_utc) AS brent_price,\r\n",
+        "\r\n",
+        "    MAX_BY(eqnr_price, timestamp_utc)\r\n",
+        "        / MIN_BY(eqnr_price, timestamp_utc) - 1\r\n",
+        "        AS eqnr_daily_return,\r\n",
+        "\r\n",
+        "    MAX_BY(brent_price, timestamp_utc)\r\n",
+        "        / MIN_BY(brent_price, timestamp_utc) - 1\r\n",
+        "        AS brent_daily_return,\r\n",
+        "\r\n",
+        "    CORR(\r\n",
+        "        eqnr_return_5m_pct,\r\n",
+        "        brent_return_5m_pct\r\n",
+        "    ) AS correlation\r\n",
+        "\r\n",
+        "FROM oil_stock.gold.market_5m\r\n",
+        "\r\n",
+        "GROUP BY trading_date_oslo\r\n",
+        "ORDER BY trading_date_oslo"
+      ],
+      "catalog": "oil_stock",
+      "schema": "gold"
+    },
+    {
+      "name": "eee02cc1",
+      "displayName": "time_series_5m",
+      "queryLines": [
+        "SELECT\r\n",
+        "    timestamp_oslo,\r\n",
+        "    CAST(trading_date_oslo AS DATE) AS trading_date_oslo,\r\n",
+        "    date_format(timestamp_oslo, 'HH:mm') AS time_oslo,\r\n",
+        "    eqnr_return_5m_pct,\r\n",
+        "    brent_return_5m_pct\r\n",
+        "FROM oil_stock.gold.market_5m\r\n",
+        "ORDER BY timestamp_oslo"
+      ]
+    },
+    {
+      "name": "fed9d467",
+      "displayName": "rolling_corr_5m",
+      "queryLines": [
+        "WITH corr AS (\r\n",
+        "    SELECT\r\n",
+        "        timestamp_oslo,\r\n",
+        "        trading_date_oslo,\r\n",
+        "        date_format(timestamp_oslo, 'HH:mm') AS time_oslo,\r\n",
+        "\r\n",
+        "        COUNT(*) OVER (\r\n",
+        "            PARTITION BY trading_date_oslo\r\n",
+        "            ORDER BY timestamp_utc\r\n",
+        "            ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\r\n",
+        "        ) AS n_obs,\r\n",
+        "\r\n",
+        "        CORR(\r\n",
+        "            eqnr_return_5m_pct,\r\n",
+        "            brent_return_5m_pct\r\n",
+        "        ) OVER (\r\n",
+        "            PARTITION BY trading_date_oslo\r\n",
+        "            ORDER BY timestamp_utc\r\n",
+        "            ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\r\n",
+        "        ) AS rolling_correlation\r\n",
+        "\r\n",
+        "    FROM oil_stock.gold.market_5m\r\n",
+        ")\r\n",
+        "\r\n",
+        "SELECT\r\n",
+        "    timestamp_oslo,\r\n",
+        "    trading_date_oslo,\r\n",
+        "    time_oslo,\r\n",
+        "\r\n",
+        "    CASE\r\n",
+        "        WHEN n_obs >= 6 THEN rolling_correlation\r\n",
+        "    END AS rolling_correlation\r\n",
+        "\r\n",
+        "FROM corr\r\n",
+        "ORDER BY timestamp_oslo"
+      ]
+    },
+    {
+      "name": "1c692532",
+      "displayName": "normalized_price_5m",
+      "queryLines": [
+        "SELECT\r\n",
+        "    timestamp_utc,\r\n",
+        "    timestamp_oslo,\r\n",
+        "    CAST(trading_date_oslo AS DATE) AS trading_date_oslo,\r\n",
+        "    date_format(timestamp_oslo, 'HH:mm') AS time_oslo,\r\n",
+        "\r\n",
+        "    eqnr_price\r\n",
+        "        / FIRST_VALUE(eqnr_price) OVER (\r\n",
+        "            PARTITION BY trading_date_oslo\r\n",
+        "            ORDER BY timestamp_utc\r\n",
+        "        ) * 100 AS eqnr_normalized,\r\n",
+        "\r\n",
+        "    brent_price\r\n",
+        "        / FIRST_VALUE(brent_price) OVER (\r\n",
+        "            PARTITION BY trading_date_oslo\r\n",
+        "            ORDER BY timestamp_utc\r\n",
+        "        ) * 100 AS brent_normalized\r\n",
+        "\r\n",
+        "FROM oil_stock.gold.market_5m\r\n",
+        "\r\n",
+        "ORDER BY timestamp_utc"
+      ]
+    },
+    {
+      "name": "d91cc865",
+      "displayName": "1h_volatility_5m",
+      "queryLines": [
+        "SELECT\r\n",
+        "    CAST(trading_date_oslo AS DATE) AS trading_date_oslo,\r\n",
+        "    date_format(timestamp_oslo, 'HH:mm') AS time_oslo,\r\n",
+        "    \r\n",
+        "    STDDEV_SAMP(eqnr_return_5m_pct) OVER (\r\n",
+        "        PARTITION BY trading_date_oslo\r\n",
+        "        ORDER BY timestamp_utc\r\n",
+        "        ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\r\n",
+        "    ) AS eqnr_volatility_1h,\r\n",
+        "\r\n",
+        "    STDDEV_SAMP(brent_return_5m_pct) OVER (\r\n",
+        "        PARTITION BY trading_date_oslo\r\n",
+        "        ORDER BY timestamp_utc\r\n",
+        "        ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\r\n",
+        "    ) AS brent_volatility_1h\r\n",
+        "FROM oil_stock.gold.market_5m"
+      ]
+    },
+    {
+      "name": "8cc32039",
+      "displayName": "cards_daily",
+      "queryLines": [
+        "SELECT\r\n",
+        "    MAX_BY(eqnr_price, trading_date) AS eqnr_price,\r\n",
+        "    MAX_BY(brent_price, trading_date) AS brent_price,\r\n",
+        "\r\n",
+        "    MAX_BY(eqnr_price, trading_date)\r\n",
+        "        / MIN_BY(eqnr_price, trading_date) - 1\r\n",
+        "        AS eqnr_period_return,\r\n",
+        "\r\n",
+        "    MAX_BY(brent_price, trading_date)\r\n",
+        "        / MIN_BY(brent_price, trading_date) - 1\r\n",
+        "        AS brent_period_return,\r\n",
+        "\r\n",
+        "    CORR(\r\n",
+        "        eqnr_daily_return,\r\n",
+        "        brent_daily_return\r\n",
+        "    ) AS correlation\r\n",
+        "\r\n",
+        "FROM oil_stock.gold.market_daily\r\n",
+        "\r\n",
+        "WHERE trading_date BETWEEN :date_range.min AND :date_range.max\r\n"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "2026-08-04T00:00:00.000"
+              },
+              "max": {
+                "value": "2026-08-18T23:59:59.999"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09caab24",
+      "displayName": "normalized_price_daily",
+      "queryLines": [
+        "WITH filtered AS (\r\n",
+        "  SELECT\r\n",
+        "    *\r\n",
+        "  FROM oil_stock.gold.market_daily\r\n",
+        "  WHERE trading_date BETWEEN :date_range.min AND :date_range.max\r\n",
+        ")\r\n",
+        "\r\n",
+        "SELECT\r\n",
+        "  trading_date,\r\n",
+        "\r\n",
+        "  eqnr_price / FIRST_VALUE(eqnr_price) OVER(ORDER BY trading_date) * 100 AS eqnr_normalized,\r\n",
+        "  brent_price / FIRST_VALUE(brent_price) OVER(ORDER BY trading_date) * 100 AS brent_normalized \r\n",
+        "  \r\n",
+        "FROM filtered\r\n",
+        "ORDER BY trading_date\r\n"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "2026-08-10T00:00:00.000"
+              },
+              "max": {
+                "value": "2026-08-24T23:59:59.999"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "f9e4c861",
+      "displayName": "rolling_corr_daily",
+      "queryLines": [
+        "WITH filtered AS (\r\n",
+        "    SELECT *\r\n",
+        "    FROM oil_stock.gold.market_daily\r\n",
+        "    WHERE trading_date BETWEEN :date_range.min AND :date_range.max\r\n",
+        "),\r\n",
+        "\r\n",
+        "corr AS (\r\n",
+        "    SELECT\r\n",
+        "        trading_date,\r\n",
+        "\r\n",
+        "        COUNT(*) OVER (\r\n",
+        "            ORDER BY trading_date\r\n",
+        "            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW\r\n",
+        "        ) AS n_obs,\r\n",
+        "\r\n",
+        "        CORR(\r\n",
+        "            eqnr_daily_return,\r\n",
+        "            brent_daily_return\r\n",
+        "        ) OVER (\r\n",
+        "            ORDER BY trading_date\r\n",
+        "            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW\r\n",
+        "        ) AS rolling_correlation\r\n",
+        "\r\n",
+        "    FROM filtered\r\n",
+        ")\r\n",
+        "\r\n",
+        "SELECT\r\n",
+        "    trading_date,\r\n",
+        "    CASE\r\n",
+        "        WHEN n_obs >= 12 THEN rolling_correlation\r\n",
+        "    END AS rolling_correlation\r\n",
+        "\r\n",
+        "FROM corr\r\n",
+        "ORDER BY trading_date"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "2026-08-03T00:00:00.000"
+              },
+              "max": {
+                "value": "2026-08-24T23:59:59.999"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bb6d17da",
+      "displayName": "time_series_daily",
+      "queryLines": [
+        "SELECT\r\n",
+        "    trading_date,\r\n",
+        "\r\n",
+        "    eqnr_daily_return,\r\n",
+        "    brent_daily_return\r\n",
+        "\r\n",
+        "FROM oil_stock.gold.market_daily\r\n",
+        "ORDER BY trading_date"
+      ]
+    },
+    {
+      "name": "0b04c6e3",
+      "displayName": "30d_volatility_daily",
+      "queryLines": [
+        "WITH filtered AS (\r\n",
+        "    SELECT *\r\n",
+        "    FROM oil_stock.gold.market_daily\r\n",
+        "    WHERE trading_date BETWEEN :date_range.min AND :date_range.max\r\n",
+        ")\r\n",
+        "\r\n",
+        "SELECT\r\n",
+        "    trading_date,\r\n",
+        "\r\n",
+        "    STDDEV_SAMP(eqnr_daily_return) OVER (\r\n",
+        "        ORDER BY trading_date\r\n",
+        "        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW\r\n",
+        "    ) AS eqnr_volatility_30d,\r\n",
+        "\r\n",
+        "    STDDEV_SAMP(brent_daily_return) OVER (\r\n",
+        "        ORDER BY trading_date\r\n",
+        "        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW\r\n",
+        "    ) AS brent_volatility_30d\r\n",
+        "\r\n",
+        "FROM filtered\r\n",
+        "ORDER BY trading_date"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "2026-08-16T00:00:00.000"
+              },
+              "max": {
+                "value": "2026-08-24T23:59:59.999"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "86da3f22",
+      "displayName": "Intraday",
+      "layout": [
+        {
+          "widget": {
+            "name": "latest",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "brent_price",
+                      "expression": "`brent_price`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Brent Price"
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "brent_price",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "c23a39a6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "brent_daily_return",
+                      "expression": "`brent_daily_return`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Brent Daily Return "
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "brent_daily_return",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0c39bfe8",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "eqnr_price",
+                      "expression": "`eqnr_price`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "EQNR Price"
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "eqnr_price",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "NOK",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }}"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "b5764629",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "eqnr_daily_return",
+                      "expression": "`eqnr_daily_return`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "EQNR Daily Return "
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "eqnr_daily_return",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "cd73629e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d91cc865",
+                  "fields": [
+                    {
+                      "name": "time_oslo",
+                      "expression": "`time_oslo`"
+                    },
+                    {
+                      "name": "eqnr_volatility_1h",
+                      "expression": "`eqnr_volatility_1h`"
+                    },
+                    {
+                      "name": "brent_volatility_1h",
+                      "expression": "`brent_volatility_1h`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "time_oslo",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "eqnr_volatility_1h"
+                    },
+                    {
+                      "fieldName": "brent_volatility_1h"
+                    }
+                  ]
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "2de75dce",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# <span style=\"font-size:24px\">Intraday Movements</span>"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 8,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "8cb440b4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fed9d467",
+                  "fields": [
+                    {
+                      "name": "time_oslo",
+                      "expression": "`time_oslo`"
+                    },
+                    {
+                      "name": "rolling_correlation",
+                      "expression": "`rolling_correlation`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": false
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "time_oslo",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "rolling_correlation",
+                  "axis": {
+                    "title": "Last Hour Correlation"
+                  },
+                  "displayName": "Correlation",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "057b1d55",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "1c692532",
+                  "fields": [
+                    {
+                      "name": "time_oslo",
+                      "expression": "`time_oslo`"
+                    },
+                    {
+                      "name": "brent_normalized",
+                      "expression": "`brent_normalized`"
+                    },
+                    {
+                      "name": "eqnr_normalized",
+                      "expression": "`eqnr_normalized`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "time_oslo",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "brent_normalized"
+                    },
+                    {
+                      "fieldName": "eqnr_normalized"
+                    }
+                  ],
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "date-picker",
+            "queries": [
+              {
+                "name": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19e1e64e61a5c803d2c7dfac7c45b_daily(trading_date_oslo)",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "daily(trading_date_oslo)",
+                      "expression": "DATE_TRUNC(\"DAY\", `trading_date_oslo`)"
+                    },
+                    {
+                      "name": "daily(trading_date_oslo)_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19ed9e7921eddaa4174cfae5345c9_daily(trading_date_oslo)",
+                "query": {
+                  "datasetName": "fed9d467",
+                  "fields": [
+                    {
+                      "name": "daily(trading_date_oslo)",
+                      "expression": "DATE_TRUNC(\"DAY\", `trading_date_oslo`)"
+                    },
+                    {
+                      "name": "daily(trading_date_oslo)_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19edea69d1cb1a52a6179ca644d34_daily(trading_date_oslo)",
+                "query": {
+                  "datasetName": "1c692532",
+                  "fields": [
+                    {
+                      "name": "daily(trading_date_oslo)",
+                      "expression": "DATE_TRUNC(\"DAY\", `trading_date_oslo`)"
+                    },
+                    {
+                      "name": "daily(trading_date_oslo)_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a089669014a4808e592f6d8e55d3_daily(trading_date_oslo)",
+                "query": {
+                  "datasetName": "d91cc865",
+                  "fields": [
+                    {
+                      "name": "daily(trading_date_oslo)",
+                      "expression": "DATE_TRUNC(\"DAY\", `trading_date_oslo`)"
+                    },
+                    {
+                      "name": "daily(trading_date_oslo)_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Date Picker"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "daily(trading_date_oslo)",
+                    "displayName": "DAILY(trading_date_oslo)",
+                    "queryName": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19e1e64e61a5c803d2c7dfac7c45b_daily(trading_date_oslo)"
+                  },
+                  {
+                    "fieldName": "daily(trading_date_oslo)",
+                    "displayName": "DAILY(trading_date_oslo)",
+                    "queryName": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19ed9e7921eddaa4174cfae5345c9_daily(trading_date_oslo)"
+                  },
+                  {
+                    "fieldName": "daily(trading_date_oslo)",
+                    "displayName": "DAILY(trading_date_oslo)",
+                    "queryName": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f19edea69d1cb1a52a6179ca644d34_daily(trading_date_oslo)"
+                  },
+                  {
+                    "fieldName": "daily(trading_date_oslo)",
+                    "displayName": "DAILY(trading_date_oslo)",
+                    "queryName": "dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a089669014a4808e592f6d8e55d3_daily(trading_date_oslo)"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "correlation",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "57d8e900",
+                  "fields": [
+                    {
+                      "name": "correlation",
+                      "expression": "`correlation`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Daily Correlation"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "correlation",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "347849f1",
+      "displayName": "Daily",
+      "layout": [
+        {
+          "widget": {
+            "name": "eqnr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "fields": [
+                    {
+                      "name": "eqnr_price",
+                      "expression": "`eqnr_price`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "EQNR Price"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "eqnr_price",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "NOK",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "brent",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "fields": [
+                    {
+                      "name": "brent_price",
+                      "expression": "`brent_price`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Brent Price"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "brent_price",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "eqnr1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "fields": [
+                    {
+                      "name": "eqnr_period_return",
+                      "expression": "`eqnr_period_return`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "EQNR Return"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "eqnr_period_return",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "brent-return",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "fields": [
+                    {
+                      "name": "brent_period_return",
+                      "expression": "`brent_period_return`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Brent Return"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "brent_period_return",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "correlation",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "fields": [
+                    {
+                      "name": "sum(correlation)",
+                      "expression": "SUM(`correlation`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Correlation"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(correlation)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 1,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "c72c18e1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "09caab24",
+                  "fields": [
+                    {
+                      "name": "trading_date",
+                      "expression": "`trading_date`"
+                    },
+                    {
+                      "name": "brent_normalized",
+                      "expression": "`brent_normalized`"
+                    },
+                    {
+                      "name": "eqnr_normalized",
+                      "expression": "`eqnr_normalized`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "trading_date",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "brent_normalized"
+                    },
+                    {
+                      "fieldName": "eqnr_normalized"
+                    }
+                  ]
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "date-range",
+            "queries": [
+              {
+                "name": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a06d03c71adfb1cd99f98a74ca3f_date_range",
+                "query": {
+                  "datasetName": "8cc32039",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a06ffaff1aee909fe47cdd167f0b_date_range",
+                "query": {
+                  "datasetName": "09caab24",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a0729ef7172cbd4759005e9b0c64_date_range",
+                "query": {
+                  "datasetName": "f9e4c861",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a08936ec145bb8f0772c0a261b3d_date_range",
+                "query": {
+                  "datasetName": "0b04c6e3",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "operator": {
+                    "operator": "AND",
+                    "args": []
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Date Range"
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a06d03c71adfb1cd99f98a74ca3f_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a06ffaff1aee909fe47cdd167f0b_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a0729ef7172cbd4759005e9b0c64_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "parameter_dashboards/01f19e1405a61f95af3bcf140d94e06c/datasets/01f1a08936ec145bb8f0772c0a261b3d_date_range"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "b3944ce2",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "f9e4c861",
+                  "fields": [
+                    {
+                      "name": "trading_date",
+                      "expression": "`trading_date`"
+                    },
+                    {
+                      "name": "rolling_correlation",
+                      "expression": "`rolling_correlation`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "trading_date",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "rolling_correlation",
+                  "axis": {
+                    "title": "30 day Correlation"
+                  },
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": -1,
+                      "max": 1
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "1d68f02e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "0b04c6e3",
+                  "fields": [
+                    {
+                      "name": "trading_date",
+                      "expression": "`trading_date`"
+                    },
+                    {
+                      "name": "brent_volatility_30d",
+                      "expression": "`brent_volatility_30d`"
+                    },
+                    {
+                      "name": "eqnr_volatility_30d",
+                      "expression": "`eqnr_volatility_30d`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "trading_date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "brent_volatility_30d"
+                    },
+                    {
+                      "fieldName": "eqnr_volatility_30d"
+                    }
+                  ],
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "794a7933",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# <span style=\"font-size: 24px;\">Daily Movements over Time</span>"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 8,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
