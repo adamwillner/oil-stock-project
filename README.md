@@ -4,7 +4,7 @@ Small Databricks data engineering project comparing Equinor (`EQNR.OL`) with Bre
 
 ## Architecture
 
-`yfinance → Bronze → Silver → Gold → Databricks AI/BI Dashboard`
+`yfinance → Bronze → Silver → Gold → Databricks BI Dashboard`
 
 The project uses two grains: **5-minute data** for recent intraday analysis and **daily data** for longer-term historical analysis.
 
